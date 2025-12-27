@@ -1,9 +1,9 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import Navbar from "./components/Navbar";
-import ResultCard from "./components/ResultCard";
 import Footer from "./components/Footer";
+import ResultCard from "./components/ResultCard";
 
 import { ExtractionResult } from "./types";
 import { extractTextFromImage } from "./services/geminiService";
@@ -17,83 +17,60 @@ const App: React.FC = () => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  const stopCamera = useCallback(() => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach((track) => track.stop());
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraActive(false);
-  }, []);
+  const processFile = async (file: File | Blob, fileName: string = "capture.png") => {
+    const id = uuidv4();
+    const imageUrl = URL.createObjectURL(file);
 
-  // Safety: se esci dalla pagina / smonti il componente, spegniamo la camera.
-  useEffect(() => {
-    return () => stopCamera();
-  }, [stopCamera]);
+    const newResult: ExtractionResult = {
+      id,
+      imageUrl,
+      extractedText: "",
+      fileName,
+      status: "processing",
+      timestamp: Date.now(),
+    };
 
-  const processFile = useCallback(
-    async (file: File | Blob, fileName: string = "capture.png") => {
-      const id = uuidv4();
-      const imageUrl = URL.createObjectURL(file);
+    setResults((prev) => [newResult, ...prev]);
 
-      const newResult: ExtractionResult = {
-        id,
-        imageUrl,
-        extractedText: "",
-        fileName,
-        status: "processing",
-        timestamp: Date.now(),
+    try {
+      const reader = new FileReader();
+
+      reader.onloadend = async () => {
+        const base64String = (reader.result as string).split(",")[1];
+
+        try {
+          const text = await extractTextFromImage(
+            base64String,
+            // Blob ha type, ma nel dubbio fallback
+            (file as File).type || (file as Blob).type || "image/png"
+          );
+
+          setResults((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, status: "completed", extractedText: text } : r))
+          );
+        } catch (err: any) {
+          setResults((prev) =>
+            prev.map((r) => (r.id === id ? { ...r, status: "error", errorMessage: err?.message } : r))
+          );
+        }
       };
 
-      setResults((prev) => [newResult, ...prev]);
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setResults((prev) =>
+        prev.map((r) =>
+          r.id === id
+            ? { ...r, status: "error", errorMessage: "BUFFER_READ_FAILURE: Impossibile decodificare sorgente" }
+            : r
+        )
+      );
+    }
+  };
 
-      try {
-        const reader = new FileReader();
-
-        reader.onloadend = async () => {
-          const base64String = (reader.result as string).split(",")[1];
-
-          try {
-            const mimeType = (file as File).type || "image/png";
-            const text = await extractTextFromImage(base64String, mimeType);
-
-            setResults((prev) =>
-              prev.map((r) =>
-                r.id === id ? { ...r, status: "completed", extractedText: text } : r
-              )
-            );
-          } catch (err: any) {
-            setResults((prev) =>
-              prev.map((r) =>
-                r.id === id
-                  ? { ...r, status: "error", errorMessage: err?.message || "Errore sconosciuto" }
-                  : r
-              )
-            );
-          }
-        };
-
-        reader.readAsDataURL(file);
-      } catch {
-        setResults((prev) =>
-          prev.map((r) =>
-            r.id === id
-              ? {
-                  ...r,
-                  status: "error",
-                  errorMessage: "BUFFER_READ_FAILURE: Impossibile decodificare sorgente",
-                }
-              : r
-          )
-        );
-      }
-    },
-    []
-  );
-
-  const startCamera = useCallback(async () => {
+  const startCamera = async () => {
     try {
       setIsCameraActive(true);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
@@ -107,9 +84,18 @@ const App: React.FC = () => {
       alert("Impossibile accedere alla fotocamera. Verifica i permessi.");
       setIsCameraActive(false);
     }
-  }, []);
+  };
 
-  const capturePhoto = useCallback(() => {
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) {
+      const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
+      tracks.forEach((t) => t.stop());
+      videoRef.current.srcObject = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  const capturePhoto = () => {
     if (!videoRef.current || !canvasRef.current) return;
 
     const video = videoRef.current;
@@ -132,62 +118,51 @@ const App: React.FC = () => {
       "image/png",
       1
     );
-  }, [processFile, stopCamera]);
+  };
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const files = e.target.files;
-      if (!files) return;
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
 
-      Array.from(files).forEach((file) => {
-        if (file.type.startsWith("image/")) {
-          processFile(file, file.name);
-        } else {
-          alert("Sorgente non valida. Richiesto stream immagine.");
-        }
-      });
+    Array.from(files).forEach((file) => {
+      if (file.type.startsWith("image/")) {
+        processFile(file, file.name);
+      } else {
+        alert("Sorgente non valida. Richiesto stream immagine.");
+      }
+    });
+  };
 
-      // reset input (così puoi ricaricare lo stesso file)
-      e.target.value = "";
-    },
-    [processFile]
-  );
-
-  const onDragOver = useCallback((e: React.DragEvent) => {
+  const onDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(true);
-  }, []);
+  };
 
-  const onDragLeave = useCallback(() => {
+  const onDragLeave = () => setIsDragging(false);
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
     setIsDragging(false);
-  }, []);
 
-  const onDrop = useCallback(
-    (e: React.DragEvent) => {
-      e.preventDefault();
-      setIsDragging(false);
+    const files = e.dataTransfer.files;
+    if (!files) return;
 
-      const files = e.dataTransfer.files;
-      if (!files) return;
+    Array.from(files).forEach((file) => {
+      if (file.type.startsWith("image/")) {
+        processFile(file, file.name);
+      }
+    });
+  };
 
-      Array.from(files).forEach((file) => {
-        if (file.type.startsWith("image/")) {
-          processFile(file, file.name);
-        }
-      });
-    },
-    [processFile]
-  );
-
-  const removeResult = useCallback((id: string) => {
+  const removeResult = (id: string) => {
     setResults((prev) => prev.filter((r) => r.id !== id));
-  }, []);
+  };
 
-  const clearAll = useCallback(() => {
+  const clearAll = () => {
     if (window.confirm("Eseguire PURGE completo del sistema?")) {
       setResults([]);
     }
-  }, []);
+  };
 
   return (
     <div className="min-h-screen flex flex-col selection:bg-blue-100 selection:text-blue-900">
@@ -213,7 +188,7 @@ const App: React.FC = () => {
 
           <p className="text-xl text-slate-500 max-w-3xl mx-auto font-medium leading-relaxed tracking-tight">
             Attiva il sensore neurale per convertire immagini in flussi di dati testuali. Neuralynx mappa
-            l'informazione visiva con algoritmi di estrazione a bassa latenza.
+            l&apos;informazione visiva con algoritmi di estrazione a bassa latenza.
           </p>
         </div>
 
@@ -458,14 +433,16 @@ const App: React.FC = () => {
               <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-full animate-[spin_30s_linear_infinite] opacity-50"></div>
               <div className="absolute inset-4 border border-blue-200 rounded-full animate-[spin_15s_linear_infinite_reverse] opacity-30"></div>
             </div>
-            <p className="text-slate-500 font-black mt-10 tracking-[0.6em] uppercase text-[9px]">
-              Neural Silence
-            </p>
+            <p className="text-slate-500 font-black mt-10 tracking-[0.6em] uppercase text-[9px]">Neural Silence</p>
           </div>
         )}
       </main>
 
-      {/* 👇 Qui va il Footer, in fondo al JSX (prima del </div> principale) */}
+      {/* Qui, nel componente Footer, inserisci la firma:
+          DEVELOPER
+          TESTI FRANCESCO
+          Software Engineer & Design
+      */}
       <Footer />
     </div>
   );
