@@ -2,8 +2,8 @@ import React, { useState, useRef } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import Navbar from "./components/Navbar";
-import Footer from "./components/Footer";
 import ResultCard from "./components/ResultCard";
+import Footer from "./components/Footer";
 
 import { ExtractionResult } from "./types";
 import { extractTextFromImage } from "./services/geminiService";
@@ -34,29 +34,25 @@ const App: React.FC = () => {
 
     try {
       const reader = new FileReader();
-
       reader.onloadend = async () => {
         const base64String = (reader.result as string).split(",")[1];
-
         try {
-          const text = await extractTextFromImage(
-            base64String,
-            // Blob ha type, ma nel dubbio fallback
-            (file as File).type || (file as Blob).type || "image/png"
-          );
+          const mimeType = file instanceof File ? file.type : "image/png";
+          const text = await extractTextFromImage(base64String, mimeType);
 
           setResults((prev) =>
             prev.map((r) => (r.id === id ? { ...r, status: "completed", extractedText: text } : r))
           );
         } catch (err: any) {
           setResults((prev) =>
-            prev.map((r) => (r.id === id ? { ...r, status: "error", errorMessage: err?.message } : r))
+            prev.map((r) =>
+              r.id === id ? { ...r, status: "error", errorMessage: err?.message ?? "Errore OCR" } : r
+            )
           );
         }
       };
-
       reader.readAsDataURL(file);
-    } catch (err) {
+    } catch {
       setResults((prev) =>
         prev.map((r) =>
           r.id === id
@@ -70,15 +66,11 @@ const App: React.FC = () => {
   const startCamera = async () => {
     try {
       setIsCameraActive(true);
-
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-      }
+      if (videoRef.current) videoRef.current.srcObject = stream;
     } catch (err) {
       console.error("Camera access denied", err);
       alert("Impossibile accedere alla fotocamera. Verifica i permessi.");
@@ -89,7 +81,7 @@ const App: React.FC = () => {
   const stopCamera = () => {
     if (videoRef.current?.srcObject) {
       const tracks = (videoRef.current.srcObject as MediaStream).getTracks();
-      tracks.forEach((t) => t.stop());
+      tracks.forEach((track) => track.stop());
       videoRef.current.srcObject = null;
     }
     setIsCameraActive(false);
@@ -138,7 +130,9 @@ const App: React.FC = () => {
     setIsDragging(true);
   };
 
-  const onDragLeave = () => setIsDragging(false);
+  const onDragLeave = () => {
+    setIsDragging(false);
+  };
 
   const onDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -148,9 +142,7 @@ const App: React.FC = () => {
     if (!files) return;
 
     Array.from(files).forEach((file) => {
-      if (file.type.startsWith("image/")) {
-        processFile(file, file.name);
-      }
+      if (file.type.startsWith("image/")) processFile(file, file.name);
     });
   };
 
@@ -159,9 +151,7 @@ const App: React.FC = () => {
   };
 
   const clearAll = () => {
-    if (window.confirm("Eseguire PURGE completo del sistema?")) {
-      setResults([]);
-    }
+    if (window.confirm("Eseguire PURGE completo del sistema?")) setResults([]);
   };
 
   return (
@@ -433,16 +423,14 @@ const App: React.FC = () => {
               <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-full animate-[spin_30s_linear_infinite] opacity-50"></div>
               <div className="absolute inset-4 border border-blue-200 rounded-full animate-[spin_15s_linear_infinite_reverse] opacity-30"></div>
             </div>
-            <p className="text-slate-500 font-black mt-10 tracking-[0.6em] uppercase text-[9px]">Neural Silence</p>
+            <p className="text-slate-500 font-black mt-10 tracking-[0.6em] uppercase text-[9px]">
+              Neural Silence
+            </p>
           </div>
         )}
       </main>
 
-      {/* Qui, nel componente Footer, inserisci la firma:
-          DEVELOPER
-          TESTI FRANCESCO
-          Software Engineer & Design
-      */}
+      {/* ✅ Footer component */}
       <Footer />
     </div>
   );
