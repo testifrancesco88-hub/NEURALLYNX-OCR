@@ -6,7 +6,7 @@ import { GeminiPart } from "../types";
  * Utilizza il modello gemini-3-flash-preview per un'elaborazione rapida e accurata.
  */
 export const extractTextFromImage = async (base64Data: string, mimeType: string): Promise<string> => {
-  const apiKey = process.env.API_KEY;
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
   
   if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
     throw new Error("CONFIG_ERROR: Chiave API non valida o mancante nell'ambiente di esecuzione.");
