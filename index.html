@@ -14,7 +14,13 @@
             font-family: 'Inter', sans-serif;
             background-color: #f8fafc;
         }
+        /* Previene flash di contenuto non stilizzato */
+        [v-cloak] { display: none; }
     </style>
+    <script>
+      // Shim per process.env per evitare ReferenceError in ambienti statici
+      window.process = window.process || { env: {} };
+    </script>
 <script type="importmap">
 {
   "imports": {
