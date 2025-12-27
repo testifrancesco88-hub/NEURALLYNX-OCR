@@ -1,16 +1,18 @@
-
 import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { GeminiPart } from "../types";
 
-// The API key must be obtained exclusively from the environment variable process.env.API_KEY.
+/**
+ * Servizio neurale per l'estrazione di testo da immagini.
+ * Utilizza il modello gemini-3-flash-preview per un'elaborazione rapida e accurata.
+ */
 export const extractTextFromImage = async (base64Data: string, mimeType: string): Promise<string> => {
   const apiKey = process.env.API_KEY;
   
-  if (!apiKey || apiKey === "undefined") {
-    throw new Error("CONFIG_ERROR: API key not detected in the execution environment.");
+  if (!apiKey || apiKey === "undefined" || apiKey.length < 10) {
+    throw new Error("CONFIG_ERROR: Chiave API non valida o mancante nell'ambiente di esecuzione.");
   }
 
-  // Initialize GoogleGenAI with a named parameter.
+  // Inizializzazione del core neurale
   const ai = new GoogleGenAI({ apiKey });
   
   const imagePart: GeminiPart = {
@@ -21,21 +23,31 @@ export const extractTextFromImage = async (base64Data: string, mimeType: string)
   };
 
   const textPart: GeminiPart = {
-    text: "Estrai il testo dall'immagine mantenendo il layout. Restituisci solo il testo estratto."
+    text: "Estrai tutto il testo presente nell'immagine. Mantieni la struttura originale del testo, inclusi paragrafi e liste. Restituisci esclusivamente il testo estratto senza commenti aggiuntivi."
   };
 
   try {
-    // Use gemini-3-flash-preview for text extraction tasks.
-    // Call generateContent directly with model name and contents.
     const response: GenerateContentResponse = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: { parts: [imagePart, textPart] },
     });
 
-    // Directly access the .text property from GenerateContentResponse (do not call as a method).
-    return response.text || "Nessun testo rilevato.";
+    // Accesso diretto alla proprietà text della risposta
+    const extracted = response.text;
+    
+    if (!extracted || extracted.trim().length === 0) {
+      return "Nessun dato testuale rilevato nella sorgente visiva.";
+    }
+
+    return extracted;
   } catch (error: any) {
-    console.error("Neural Error:", error);
-    throw new Error(`SYSTEM_FAILURE: ${error.message || "Errore di connessione neurale."}`);
+    console.error("Neural Synthesis Error:", error);
+    
+    // Gestione specifica per errori comuni
+    if (error.message?.includes('API_KEY_INVALID')) {
+      throw new Error("AUTH_FAILURE: La chiave API fornita non è valida.");
+    }
+    
+    throw new Error(`SYSTEM_FAILURE: ${error.message || "Errore sconosciuto durante l'estrazione."}`);
   }
 };
